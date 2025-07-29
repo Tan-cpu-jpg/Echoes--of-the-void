@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Cosmic Platformer</title>
+  <style>
+    canvas {
+      background: radial-gradient(#000020, #000000);
+      display: block;
+      margin: auto;
+      border: 2px solid #fff;
+    }
+    #gameOver {
+      text-align: center;
+      font-family: Arial, sans-serif;
+      color: white;
+      display: none;
+    }
+    #restartBtn {
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #333;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<audio id="bgMusic" src="space-music.mp3" loop autoplay></audio>
+<canvas id="game" width="800" height="500"></canvas>
+<div id="gameOver">
+  <h1>Game Over</h1>
+  <p id="finalScore">Score: 0</p>
+  <button id="restartBtn">Restart</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const gameOverDiv = document.getElementById("gameOver");
+const restartBtn = document.getElementById("restartBtn");
+const finalScoreText = document.getElementById("finalScore");
+
+let keys = {};
+document.addEventListener("keydown", e => keys[e.code] = true);
+document.addEventListener("keyup", e => keys[e.code] = false);
+
+// Load astronaut image
+const astronautImg = new Image();
+astronautImg.src = "astronaut.png";
+
+const player = {
+  x: 100, y: 100,
+  vx: 0, vy: 0,
+  width: 30, height: 30,
+  grounded: false,
+  score: 0
+};
+
+const gravity = 0.6;
+const friction = 0.85;
+
+const planets = [
+  {x: 100, y: 400, radius: 60},
+  {x: 300, y: 300, radius: 40},
+  {x: 500, y: 450, radius: 70},
+  {x: 700, y: 350, radius: 50}
+];
+
+let stars = [
+  {x: 120, y: 360, collected: false},
+  {x: 320, y: 260, collected: false},
+  {x: 700, y: 310, collected: false}
+];
+
+let asteroids = [];
+let gameRunning = true;
+
+// Spawn asteroids every 3 seconds
+setInterval(() => {
+  if (!gameRunning) return;
+  let side = Math.random() < 0.5 ? "left" : "right";
+  asteroids.push({
+    x: side === "left" ? 0 : canvas.width,
+    y: Math.random() * canvas.height / 2,
+    vx: side === "left" ? 3 : -3,
+    vy: 1 + Math.random() * 2,
+    radius: 20 + Math.random() * 10
+  });
+}, 3000);
+
+function resetGame() {
+  player.x = 100;
+  player.y = 100;
+  player.vx = 0;
+  player.vy = 0;
+  player.score = 0;
+  player.grounded = false;
+
+  stars.forEach(star => star.collected = false);
+  asteroids = [];
+
+  gameRunning = true;
+  gameOverDiv.style.display = "none";
+  loop();
+}
+
+restartBtn.onclick = resetGame;
+
+function update() {
+  if (!gameRunning) return;
+
+  if (keys["ArrowLeft"]) player.vx -= 0.5;
+  if (keys["ArrowRight"]) player.vx += 0.5;
+  if (keys["Space"] && player.grounded) {
+    player.vy = -12;
+    player.grounded = false;
+  }
+
+  player.vy += gravity;
+  player.x += player.vx;
+  player.y += player.vy;
+  player.vx *= friction;
+
+  // Planet collision
+  player.grounded = false;
+  for (let planet of planets) {
+    let dx = player.x - planet.x;
+    let dy = player.y - planet.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    let minDist = planet.radius + player.height / 2;
+
+    if (dist < minDist) {
+      let angle = Math.atan2(dy, dx);
+      player.x = planet.x + Math.cos(angle) * minDist;
+      player.y = planet.y + Math.sin(angle) * minDist;
+      if (player.vy > 0) {
+        player.vy = 0;
+        player.grounded = true;
+      }
+    }
+  }
+
+  // Star collection
+  for (let star of stars) {
+    if (!star.collected) {
+      let dx = player.x - star.x;
+      let dy = player.y - star.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 20) {
+        star.collected = true;
+        player.score++;
+      }
+    }
+  }
+
+  // Asteroid movement and collision
+  for (let asteroid of asteroids) {
+    asteroid.x += asteroid.vx;
+    asteroid.y += asteroid.vy;
+
+    let dx = player.x - asteroid.x;
+    let dy = player.y - asteroid.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < asteroid.radius + player.width / 2) {
+      gameRunning = false;
+      finalScoreText.textContent = "Score: " + player.score;
+      gameOverDiv.style.display = "block";
+    }
+  }
+
+  // Bounds
+  if (player.x < 0) player.x = 0;
+  if (player.x > canvas.width) player.x = canvas.width;
+  if (player.y > canvas.height) player.y = 0;
+}
+
+function drawPlanet(planet) {
+  ctx.beginPath();
+  let grad = ctx.createRadialGradient(planet.x, planet.y, 10, planet.x, planet.y, planet.radius);
+  grad.addColorStop(0, "#4ef");
+  grad.addColorStop(1, "#222288");
+  ctx.fillStyle = grad;
+  ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawStar(star) {
+  if (!star.collected) {
+    ctx.fillStyle = "gold";
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPlayer() {
+  ctx.drawImage(astronautImg, player.x - player.width / 2, player.y - player.height / 2, player.width, player.height);
+}
+
+function drawAsteroid(asteroid) {
+  ctx.fillStyle = "#888";
+  ctx.beginPath();
+  ctx.arc(asteroid.x, asteroid.y, asteroid.radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawScore() {
+  ctx.fillStyle = "#fff";
+  ctx.font = "18px Arial";
+  ctx.fillText("Stars: " + player.score, 10, 20);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  planets.forEach(drawPlanet);
+  stars.forEach(drawStar);
+  asteroids.forEach(drawAsteroid);
+  drawPlayer();
+  drawScore();
+}
+
+function loop() {
+  update();
+  draw();
+  if (gameRunning) requestAnimationFrame(loop);
+}
+
+astronautImg.onload = () => loop();
+</script>
+</body>
+</html>
